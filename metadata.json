@@ -1,0 +1,5 @@
+{
+  "name": "Bantay Basura: District 5",
+  "description": "A localized waste management dashboard for District 5, Quezon City residents, featuring collection schedules, missed collection reporting, and an AI assistant.",
+  "requestFramePermissions": ["camera"]
+}
