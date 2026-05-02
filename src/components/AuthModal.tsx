@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Lock, User, AlertCircle, Loader2, Info, MapPin, ChevronDown } from 'lucide-react';
+import { X, Mail, Lock, User, AlertCircle, Loader2, Info, MapPin, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { BARANGAYS } from '../constants';
 import { 
@@ -8,7 +8,8 @@ import {
   createUserWithEmailAndPassword, 
   updateProfile,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -19,12 +20,13 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [barangay, setBarangay] = useState(BARANGAYS[2]); // Default to Fairview
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const validateEmail = (email: string) => {
@@ -36,6 +38,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      // Force account selection so users can easily switch accounts
+      provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
       
       const userRef = doc(db, 'users', result.user.uid);
@@ -65,13 +69,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setError('Please enter your email address first.');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setSuccess('Password reset email sent! Please check your inbox.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
     // Validation
-    if (!email || !password) {
-      setError('Please fill in all fields');
+    if (!email || (mode !== 'reset' && !password)) {
+      setError('Please fill in all required fields');
       return;
     }
 
@@ -80,7 +106,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       return;
     }
 
-    if (password.length < 6) {
+    if (mode === 'signup' && password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
     }
@@ -88,16 +114,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setLoading(true);
 
     try {
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password; 
+
       if (mode === 'signup') {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const result = await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
         
         // Update profile
-        await updateProfile(result.user, { displayName });
+        await updateProfile(result.user, { displayName: displayName.trim() });
         
         // Save user profile in Firestore
         await setDoc(doc(db, 'users', result.user.uid), {
-          displayName,
-          email,
+          displayName: displayName.trim(),
+          email: trimmedEmail,
           barangay,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -105,17 +134,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
         onSuccess(result.user);
         onClose();
-      } else {
-        const result = await signInWithEmailAndPassword(auth, email, password);
-        onSuccess(result.user);
-        onClose();
+      } else if (mode === 'login') {
+        try {
+          const result = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+          onSuccess(result.user);
+          onClose();
+        } catch (loginErr: any) {
+          if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
+            setMode('signup');
+            setError('Account not found. Please enter your name and barangay below to create your account po!');
+            setLoading(false);
+            return;
+          }
+          throw loginErr;
+        }
       }
     } catch (err: any) {
+      console.error("Auth Error:", err.code, err.message);
       // Map Firebase errors to user friendly messages
-      let msg = err.message;
-      if (err.code === 'auth/email-already-in-use') msg = 'Email is already in use po.';
-      if (err.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
-      setError(msg || 'An error occurred during authentication');
+      let msg = 'An error occurred during authentication. Please try again.';
+      
+      switch (err.code) {
+        case 'auth/user-not-found':
+          msg = 'No account found with this email. Please sign up first po.';
+          break;
+        case 'auth/wrong-password':
+          msg = 'Incorrect password. Click "Forgot Password" to reset it.';
+          break;
+        case 'auth/invalid-credential':
+          msg = 'Invalid email or password. If you signed up with Google, please use the Google button po.';
+          break;
+        case 'auth/invalid-email':
+          msg = 'Please enter a valid email address.';
+          break;
+        case 'auth/email-already-in-use':
+          msg = 'This email is already registered. Try logging in instead.';
+          break;
+        case 'auth/too-many-requests':
+          msg = 'Too many failed attempts. Please try again later or reset your password.';
+          break;
+        case 'auth/user-disabled':
+          msg = 'This account has been disabled. Please contact support.';
+          break;
+        default:
+          if (err.message) msg = err.message;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -142,12 +206,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <h2 className="text-2xl font-display font-bold text-slate-900">
-                    {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+                    {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
                   </h2>
                   <p className="text-sm text-slate-500 mt-1">
                     {mode === 'login' 
                       ? 'Access your waste management dashboard' 
-                      : 'Join District 5 community services'}
+                      : mode === 'signup' 
+                        ? 'Join District 5 community services'
+                        : 'Enter your email to receive a reset link'}
                   </p>
                 </div>
                 <button 
@@ -187,7 +253,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 </motion.div>
               )}
 
-              <form onSubmit={handleAction} className="space-y-4">
+              {success && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="mb-6 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-start gap-3"
+                >
+                  <CheckCircle2 size={18} className="text-green-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-green-800 font-medium">{success}</p>
+                </motion.div>
+              )}
+
+              <form onSubmit={mode === 'reset' ? handlePasswordReset : handleAction} className="space-y-4">
                 {mode === 'signup' && (
                   <>
                     <div className="space-y-1">
@@ -240,20 +317,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-eco-500 outline-none transition-all text-sm"
-                      required
-                    />
+                {mode !== 'reset' && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center ml-1">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Password</label>
+                      {mode === 'login' && (
+                        <button 
+                          type="button"
+                          onClick={() => setMode('reset')}
+                          className="text-[10px] font-bold text-eco-600 hover:underline"
+                        >
+                          Forgot Password?
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-eco-500 outline-none transition-all text-sm"
+                        required={mode !== 'reset'}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <button
                   type="submit"
@@ -261,15 +351,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   className="w-full bg-eco-600 hover:bg-eco-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-eco-200 flex items-center justify-center gap-2"
                 >
                   {loading ? <Loader2 size={20} className="animate-spin" /> : null}
-                  {mode === 'login' ? 'Log In' : 'Create Account'}
+                  {mode === 'login' ? 'Log In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
                 </button>
               </form>
 
               <div className="mt-8 text-center">
                 <p className="text-sm text-slate-500">
-                  {mode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+                  {mode === 'login' ? "Don't have an account?" : mode === 'signup' ? "Already have an account?" : "Recall your password?"}{' '}
                   <button
-                    onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+                    onClick={() => {
+                        setError(null);
+                        setSuccess(null);
+                        setMode(mode === 'login' ? 'signup' : 'login');
+                    }}
                     className="text-eco-600 font-bold hover:underline"
                   >
                     {mode === 'login' ? 'Sign Up' : 'Log In'}
