@@ -12,7 +12,11 @@ import {
   Loader2,
   Calendar,
   MapPin,
-  MessageSquare
+  MessageSquare,
+  TrendingUp,
+  Image as ImageIcon,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { 
@@ -35,6 +39,9 @@ interface Report {
   description: string;
   location: string;
   status: 'pending' | 'resolved' | 'rejected' | 'in-progress';
+  lguRemarks?: string;
+  resolutionProofUrl?: string;
+  resolvedAt?: any;
   createdAt: any;
   updatedAt: any;
 }
@@ -51,6 +58,30 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({ isOpen, 
   const [editForm, setEditForm] = useState({ description: '', location: '' });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Statistics calculation for LGU Performance
+  const totalReports = reports.length;
+  const resolvedCount = reports.filter(r => r.status === 'resolved').length;
+  const resolutionRate = totalReports > 0 ? Math.round((resolvedCount / totalReports) * 100) : 0;
+
+  const handleSimulateLGU = async (id: string, currentStatus: string) => {
+    if (currentStatus === 'resolved') return;
+    setSaving(true);
+    try {
+      const reportRef = doc(db, 'reports', id);
+      await updateDoc(reportRef, {
+        status: 'resolved',
+        lguRemarks: "The area was cleared at 10:30 AM by Truck No. 05. Thank you for your report!",
+        resolutionProofUrl: "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&q=80&w=600",
+        resolvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error simulating LGU response:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen || !auth.currentUser) {
@@ -121,10 +152,19 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({ isOpen, 
 
   const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'resolved': return 'bg-green-100 text-green-700';
+      case 'resolved': return 'bg-eco-100 text-eco-700';
       case 'rejected': return 'bg-red-100 text-red-700';
       case 'in-progress': return 'bg-blue-100 text-blue-700';
       default: return 'bg-amber-100 text-amber-700';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'resolved': return 'bg-eco-500';
+      case 'in-progress': return 'bg-blue-500';
+      case 'rejected': return 'bg-red-500';
+      default: return 'bg-amber-500';
     }
   };
 
@@ -175,7 +215,7 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({ isOpen, 
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-4">
+            <div className="flex-1 overflow-y-auto p-8 space-y-6">
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-4">
                   <Loader2 className="animate-spin" size={32} />
@@ -192,109 +232,227 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({ isOpen, 
                   </p>
                 </div>
               ) : (
-                reports.map((report) => (
-                  <motion.div
-                    key={report.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-xl bg-slate-100 text-slate-500`}>
-                            <AlertCircle size={18} />
-                          </div>
-                          <div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${getStatusStyle(report.status)}`}>
-                              {report.status}
-                            </span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Calendar size={12} className="text-slate-400" />
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                {formatDate(report.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {editingId === report.id ? (
-                            <button
-                              onClick={() => handleSave(report.id)}
-                              disabled={saving}
-                              className="p-2 bg-eco-600 text-white rounded-xl hover:bg-eco-700 transition-colors shadow-lg shadow-eco-100"
-                            >
-                              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleEdit(report)}
-                              className="p-2 text-slate-400 hover:text-eco-600 hover:bg-eco-50 rounded-xl transition-all"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDelete(report.id)}
-                            disabled={deletingId === report.id}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                          >
-                            {deletingId === report.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                          </button>
-                        </div>
+                <>
+                  {/* Performance Scorecard */}
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-eco-600 rounded-[2rem] p-6 text-white shadow-lg shadow-eco-100 relative overflow-hidden group">
+                      <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform duration-700">
+                        <TrendingUp size={120} />
                       </div>
-
-                      <div className="space-y-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                            <MapPin size={10} />
-                            Location
-                          </label>
-                          {editingId === report.id ? (
-                            <input
-                              type="text"
-                              value={editForm.location}
-                              onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-eco-500 outline-none transition-all"
-                            />
-                          ) : (
-                            <p className="text-sm font-bold text-slate-900">{report.location}</p>
-                          )}
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">Resolution Rate</p>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-4xl font-display font-bold">{resolutionRate}</span>
+                          <span className="text-xl font-display font-medium">%</span>
                         </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                            <MessageSquare size={10} />
-                            Description
-                          </label>
-                          {editingId === report.id ? (
-                            <textarea
-                              value={editForm.description}
-                              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                              rows={3}
-                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-eco-500 outline-none transition-all resize-none"
-                            />
-                          ) : (
-                            <p className="text-sm text-slate-600 leading-relaxed">{report.description}</p>
-                          )}
+                        <div className="mt-4 flex items-center gap-2">
+                           <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${resolutionRate}%` }}
+                                className="h-full bg-white" 
+                              />
+                           </div>
                         </div>
-                      </div>
-
-                      <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          Brgy. {report.barangay}
-                        </span>
-                        {report.status === 'pending' && (
-                          <div className="flex items-center gap-1 text-amber-500">
-                             <Clock size={12} />
-                             <span className="text-[10px] font-bold uppercase">Awaiting Collection</span>
-                          </div>
-                        )}
                       </div>
                     </div>
-                  </motion.div>
-                ))
+
+                    <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-lg shadow-slate-100 relative overflow-hidden group">
+                      <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:rotate-12 transition-transform duration-700">
+                        <ShieldCheck size={120} />
+                      </div>
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">Total Activity</p>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-4xl font-display font-bold">{totalReports}</span>
+                          <span className="text-sm font-medium ml-1">Reports</span>
+                        </div>
+                        <p className="text-[10px] mt-4 font-medium opacity-60">Verified Community Entries</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {reports.map((report) => (
+                    <motion.div
+                      key={report.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {/* Card Header Background based on status */}
+                      <div className={`h-2 w-full ${getStatusColor(report.status)}`} />
+                      
+                      <div className="p-8">
+                        <div className="flex justify-between items-start mb-6">
+                          <div className="flex items-start gap-4">
+                            <div className={`p-4 rounded-2xl ${getStatusStyle(report.status)} shrink-0`}>
+                              <AlertCircle size={24} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${getStatusStyle(report.status)}`}>
+                                  {report.status}
+                                </span>
+                                {report.status === 'resolved' && (
+                                  <span className="flex items-center gap-1 text-[10px] font-bold text-eco-600 bg-eco-50 px-2 py-0.5 rounded-full uppercase">
+                                    <Zap size={10} />
+                                    Swift Action
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-display font-bold text-lg text-slate-900">{report.issueType}</h3>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Calendar size={12} className="text-slate-400" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {formatDate(report.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {report.status !== 'resolved' && (
+                              <button
+                                onClick={() => handleSimulateLGU(report.id, report.status)}
+                                className="p-2 text-slate-400 hover:text-eco-600 hover:bg-eco-50 rounded-xl transition-all"
+                                title="Simulate LGU Resolution"
+                              >
+                                <Zap size={16} />
+                              </button>
+                            )}
+                            {editingId === report.id ? (
+                              <button
+                                onClick={() => handleSave(report.id)}
+                                disabled={saving}
+                                className="p-2 bg-eco-600 text-white rounded-xl hover:bg-eco-700 transition-colors shadow-lg shadow-eco-100"
+                              >
+                                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleEdit(report)}
+                                className="p-2 text-slate-400 hover:text-eco-600 hover:bg-eco-50 rounded-xl transition-all"
+                              >
+                                <Edit3 size={16} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(report.id)}
+                              disabled={deletingId === report.id}
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                            >
+                              {deletingId === report.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Citizen Report Details */}
+                        <div className="bg-slate-50 px-6 py-5 rounded-3xl border border-slate-100 mb-6">
+                           <div className="space-y-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                  <MapPin size={10} />
+                                  Citizen Identified Location
+                                </label>
+                                {editingId === report.id ? (
+                                  <input
+                                    type="text"
+                                    value={editForm.location}
+                                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                                    className="w-full bg-white border border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-eco-500 outline-none transition-all"
+                                  />
+                                ) : (
+                                  <p className="text-sm font-bold text-slate-900">{report.location}</p>
+                                )}
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                  <MessageSquare size={10} />
+                                  Initial Description
+                                </label>
+                                {editingId === report.id ? (
+                                  <textarea
+                                    value={editForm.description}
+                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                    rows={3}
+                                    className="w-full bg-white border border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-eco-500 outline-none transition-all resize-none"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-slate-600 leading-relaxed italic">"{report.description}"</p>
+                                )}
+                              </div>
+                           </div>
+                        </div>
+
+                        {/* LGU Response Section */}
+                        {report.status !== 'pending' && (
+                          <div className={`rounded-3xl p-6 border transition-all ${
+                            report.status === 'resolved' 
+                              ? 'bg-eco-50 border-eco-100' 
+                              : 'bg-blue-50 border-blue-100'
+                          }`}>
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className={`p-2 rounded-xl text-white ${getStatusColor(report.status)}`}>
+                                <ShieldCheck size={16} />
+                              </div>
+                              <h4 className={`text-xs font-bold uppercase tracking-widest ${
+                                report.status === 'resolved' ? 'text-eco-900' : 'text-blue-900'
+                              }`}>Official LGU Response</h4>
+                            </div>
+
+                            {report.lguRemarks ? (
+                              <div className="space-y-4">
+                                <p className={`text-sm font-medium leading-relaxed ${
+                                  report.status === 'resolved' ? 'text-eco-800' : 'text-blue-800'
+                                }`}>
+                                  {report.lguRemarks}
+                                </p>
+                                
+                                {report.resolutionProofUrl && (
+                                  <div className="space-y-2">
+                                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-50 flex items-center gap-1">
+                                      <ImageIcon size={10} />
+                                      Proof of Action
+                                    </label>
+                                    <div className="rounded-2xl overflow-hidden border-2 border-white shadow-sm h-32 w-full">
+                                      <img 
+                                        src={report.resolutionProofUrl} 
+                                        alt="Resolution proof" 
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {report.resolvedAt && (
+                                  <div className="text-[10px] font-bold opacity-40 uppercase tracking-tighter flex items-center gap-1">
+                                    <Clock size={10} />
+                                    Closed at {new Date(report.resolvedAt.toDate()).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-blue-600 font-medium">LGU dispatch is currently reviewing the site. Updates will appear here shortly.</p>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Brgy. {report.barangay}
+                          </span>
+                          {report.status === 'pending' && (
+                            <div className="flex items-center gap-1 text-amber-500">
+                               <Clock size={12} />
+                               <span className="text-[10px] font-bold uppercase">Awaiting Collection</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </>
               )}
             </div>
 

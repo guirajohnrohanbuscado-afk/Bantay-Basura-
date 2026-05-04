@@ -40,9 +40,11 @@ service cloud.firestore {
                data.userId == request.auth.uid &&
                data.barangay is string && data.barangay.size() <= 100 &&
                data.issueType is string && data.issueType.size() <= 100 &&
-               data.status in ['pending', 'in-progress', 'resolved'] &&
+               data.status in ['pending', 'in-progress', 'resolved', 'rejected'] &&
                data.createdAt == request.time &&
-               data.get('description', '') is string && data.get('description', '').size() <= 1000;
+               data.get('description', '') is string && data.get('description', '').size() <= 1000 &&
+               (data.get('lguRemarks', '') is string && data.get('lguRemarks', '').size() <= 1000) &&
+               (data.get('resolutionProofUrl', '') is string && data.get('resolutionProofUrl', '').size() <= 500);
       }
 
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -52,7 +54,7 @@ service cloud.firestore {
                       incoming().userId == existing().userId &&
                       incoming().createdAt == existing().createdAt &&
                       incoming().updatedAt == request.time &&
-                      incoming().diff(existing()).affectedKeys().hasOnly(['description', 'location', 'updatedAt', 'status']);
+                      incoming().diff(existing()).affectedKeys().hasOnly(['description', 'location', 'updatedAt', 'status', 'lguRemarks', 'resolutionProofUrl', 'resolvedAt']);
       allow delete: if isSignedIn() && isOwner(existing().userId);
     }
   }

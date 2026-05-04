@@ -25,7 +25,10 @@
         "issueType": { "type": "string" },
         "description": { "type": "string" },
         "location": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "in-progress", "resolved"] },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "resolved", "rejected"] },
+        "lguRemarks": { "type": "string" },
+        "resolutionProofUrl": { "type": "string" },
+        "resolvedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
