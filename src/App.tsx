@@ -34,6 +34,8 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { collection, addDoc, getDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
+import { QRGalleryModal } from './components/QRGalleryModal';
+import { ReportHistoryModal } from './components/ReportHistoryModal';
 
 export default function App() {
   const [selectedBarangay, setSelectedBarangay] = useState(BARANGAYS[2]); // Default to Fairview
@@ -49,8 +51,10 @@ export default function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
   const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
+  const [isQRGalleryOpen, setIsQRGalleryOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isReportHistoryModalOpen, setIsReportHistoryModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot', text: string }[]>([
@@ -225,6 +229,16 @@ export default function App() {
     try {
       if (data.startsWith('{')) {
         const parsed = JSON.parse(data);
+        
+        // Handle User ID QR
+        if (parsed.type === 'user-id') {
+          setChatMessages(prev => [...prev, { 
+            role: 'bot', 
+            text: `👤 Community ID Scanned:\nName: ${parsed.name}\nBarangay: ${parsed.barangay}\n\nParticipation verified. Thank you for being an active community member!` 
+          }]);
+          return;
+        }
+
         if (parsed.action === 'report' || parsed.type === 'missed') {
           const brgy = BARANGAYS.find(b => b.toLowerCase() === (parsed.barangay || '').toLowerCase());
           if (brgy) setSelectedBarangay(brgy);
@@ -385,13 +399,24 @@ export default function App() {
               <span>Report Missed</span>
             </button>
 
-            <button 
-              onClick={() => setIsQRScannerOpen(true)}
-              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors order-last md:order-none"
-              title="Scan QR Code"
-            >
-              <QrCode size={20} />
-            </button>
+            <div className="relative group order-last md:order-none">
+              <button 
+                onClick={() => setIsQRScannerOpen(true)}
+                className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors"
+                title="Scan QR Code"
+              >
+                <QrCode size={20} />
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsQRGalleryOpen(true);
+                }}
+                className="absolute -top-1 -right-1 bg-eco-600 text-[8px] text-white px-1.5 py-0.5 rounded-full font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+              >
+                TEST CODES
+              </button>
+            </div>
             
             {/* User Auth Section */}
             <div className="relative">
@@ -441,6 +466,16 @@ export default function App() {
                         >
                           <UserIcon size={16} />
                           <span>Profile Settings</span>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setIsReportHistoryModalOpen(true);
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                        >
+                          <Clock size={16} />
+                          <span>Report History</span>
                         </button>
                         <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
                           <Settings size={16} />
@@ -1072,6 +1107,11 @@ export default function App() {
         }}
       />
 
+      <QRGalleryModal
+        isOpen={isQRGalleryOpen}
+        onClose={() => setIsQRGalleryOpen(false)}
+      />
+
       <ProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
@@ -1080,6 +1120,11 @@ export default function App() {
           setUser(updatedUser);
           if (updatedUser.barangay) setSelectedBarangay(updatedUser.barangay);
         }}
+      />
+
+      <ReportHistoryModal
+        isOpen={isReportHistoryModalOpen}
+        onClose={() => setIsReportHistoryModalOpen(false)}
       />
 
       {/* Floating Chat Button */}

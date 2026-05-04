@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, MapPin, Loader2, CheckCircle2, AlertCircle, Trash2, Camera } from 'lucide-react';
+import { X, User, MapPin, Loader2, CheckCircle2, AlertCircle, Trash2, Camera, QrCode as QrIcon } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { BARANGAYS } from '../constants';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -42,6 +44,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
       fetchProfile();
       setSuccess(false);
       setError(null);
+      setShowQR(false);
     }
   }, [isOpen, user]);
 
@@ -74,6 +77,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
     }
   };
 
+  const personalQRData = JSON.stringify({
+    type: 'user-id',
+    uid: user?.uid,
+    name: displayName,
+    barangay: barangay,
+    version: '1.0'
+  });
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -94,8 +105,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
             <div className="p-8">
               <div className="flex justify-between items-center mb-8">
                 <div>
-                  <h2 className="text-2xl font-display font-bold text-slate-900">Profile Settings</h2>
-                  <p className="text-sm text-slate-500 mt-1">Manage your account and preferences</p>
+                  <h2 className="text-2xl font-display font-bold text-slate-900">
+                    {showQR ? 'Your Community ID' : 'Profile Settings'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {showQR ? 'Show this to waste collectors or volunteers' : 'Manage your account and preferences'}
+                  </p>
                 </div>
                 <button 
                   onClick={onClose}
@@ -109,6 +124,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                 <div className="py-12 flex flex-col items-center justify-center gap-4">
                   <Loader2 className="animate-spin text-eco-600" size={32} />
                   <p className="text-sm text-slate-500">Loading profile data...</p>
+                </div>
+              ) : showQR ? (
+                <div className="flex flex-col items-center py-8">
+                  <div className="p-6 bg-white rounded-3xl border-4 border-eco-500 shadow-2xl mb-8 relative">
+                    <QRCodeSVG 
+                      value={personalQRData} 
+                      size={200}
+                      level="H"
+                      includeMargin={false}
+                      className="rounded-lg"
+                    />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-2 rounded-xl shadow-lg border border-eco-100">
+                      <Trash2 className="text-eco-600" size={24} />
+                    </div>
+                  </div>
+                  <div className="text-center space-y-2 mb-8">
+                    <h3 className="font-display font-bold text-xl text-slate-900">{displayName}</h3>
+                    <p className="text-sm text-slate-500 flex items-center justify-center gap-1">
+                      <MapPin size={14} className="text-eco-500" />
+                      Brgy. {barangay}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setShowQR(false)}
+                    className="w-full py-4 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors uppercase tracking-widest border-t border-slate-100"
+                  >
+                    Back to Settings
+                  </button>
                 </div>
               ) : (
                 <form onSubmit={handleSave} className="space-y-6">
@@ -126,19 +169,30 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                     </div>
                   )}
 
-                  <div className="flex flex-col items-center gap-4 mb-8">
-                    <div className="relative group">
-                      <div className="w-24 h-24 bg-eco-100 rounded-full flex items-center justify-center text-eco-600 text-3xl font-display font-bold">
-                        {user?.photoURL ? (
-                          <img src={user.photoURL} alt={displayName} className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          displayName[0] || user?.email[0] || 'U'
-                        )}
+                  <div className="flex justify-between items-center bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                    <div className="flex items-center gap-4">
+                      <div className="relative group">
+                        <div className="w-16 h-16 bg-eco-100 rounded-2xl flex items-center justify-center text-eco-600 text-xl font-display font-bold">
+                          {user?.photoURL ? (
+                            <img src={user.photoURL} alt={displayName} className="w-full h-full rounded-2xl object-cover" />
+                          ) : (
+                            (displayName[0] || user?.email[0] || 'U').toUpperCase()
+                          )}
+                        </div>
                       </div>
-                      <button className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-lg border border-slate-100 text-slate-600 hover:text-eco-600 transition-colors">
-                        <Camera size={16} />
-                      </button>
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Account Type</p>
+                        <p className="text-sm font-bold text-slate-900">Community Member</p>
+                      </div>
                     </div>
+                    <button 
+                      type="button"
+                      onClick={() => setShowQR(true)}
+                      className="flex flex-col items-center gap-1 p-3 bg-white border border-eco-100 rounded-2xl shadow-sm hover:shadow-md hover:border-eco-300 transition-all group"
+                    >
+                      <QrIcon className="text-eco-600 group-hover:scale-110 transition-transform" size={20} />
+                      <span className="text-[10px] font-bold text-eco-700 uppercase">My QR</span>
+                    </button>
                   </div>
 
                   <div className="space-y-4">
@@ -182,13 +236,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                     >
                       {saving ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={20} />}
                       Save Changes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="w-full py-3 text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      Cancel
                     </button>
                   </div>
                 </form>

@@ -53,6 +53,7 @@ service cloud.firestore {
                       incoming().createdAt == existing().createdAt &&
                       incoming().updatedAt == request.time &&
                       incoming().diff(existing()).affectedKeys().hasOnly(['description', 'location', 'updatedAt', 'status']);
+      allow delete: if isSignedIn() && isOwner(existing().userId);
     }
   }
 }

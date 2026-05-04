@@ -45,3 +45,36 @@
   }
 }
 
+/* html5-qrcode overrides */
+#qr-reader {
+  border: none !important;
+}
+
+#qr-reader img {
+  display: none;
+}
+
+#qr-reader__dashboard {
+  @apply px-4 py-8;
+}
+
+#qr-reader__dashboard_section_csr button {
+  @apply bg-eco-600 hover:bg-eco-700 text-white font-bold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-eco-200 text-sm cursor-pointer border-none;
+}
+
+#qr-reader__camera_selection {
+  @apply w-full bg-slate-100 border border-slate-200 rounded-xl py-2 px-4 text-xs font-bold text-slate-700 outline-none mb-4;
+}
+
+#qr-reader__status_span {
+  @apply text-xs font-bold text-slate-400 uppercase tracking-widest mt-4 block;
+}
+
+#qr-reader__scan_region {
+  @apply flex items-center justify-center p-0;
+}
+
+#qr-reader__scan_region video {
+  @apply rounded-[2.5rem];
+}
+
